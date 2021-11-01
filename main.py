@@ -10,11 +10,19 @@ class Student(BaseModel):
 
 
 app = FastAPI()
-db = collection("apitest", "D:", jsonSize=10, threadSize=60, CacheLength=200)
+db = collection("apitest", "D:", jsonSize=100, threadSize=60, CacheLength=10000)
 
 @app.get("/")
 async def root():
     return {"message": "Hello World"}
+
+@app.get("/cache")
+async def cache():
+    return f""" Search cache : {len(db.whereCache)}, JSON cache : {len(db.jsonCache)}  {db.whereCache}  {db.jsonCache}"""
+
+@app.get("/valid")
+async def cache():
+    return f"{db.whereCacheValid} {db.jsonValid}"
 
 @app.get("/student")
 async def student():

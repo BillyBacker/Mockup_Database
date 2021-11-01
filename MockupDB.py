@@ -76,7 +76,7 @@ class stack:
 #         self.items[key] = data
 
 class collection:
-    def __init__(self, name, repoPath, jsonSize=100, threadSize=10, CacheLength=100):
+    def __init__(self, name, repoPath, jsonSize=100, threadSize=10, CacheLength=10000):
         def mkdir(Path, name):
             fullPath = f"{Path}/{name}"
             if path.exists(fullPath):
@@ -105,12 +105,27 @@ class collection:
                 "allJson" : {}
                 }
             self.saveConfig()
-        # self.cache = QueueCache(self.config["CacheLength"])
+        self.whereCache = {}
+        self.whereCacheValid = {}
+        self.jsonCache = {}
+        self.jsonValid = {}
+
     def __len__(self):
         buffer = 0
         for c in self.config["allJson"].keys():
             buffer += self.config["allJson"][c]
         return buffer
+    def isCachValid(self, cacheID, validation, cacheBin):
+        return cacheID in cacheBin and cacheID in validation and validation[cacheID]
+    def saveCache(self, ID, Data, validation, cacheBin):
+        # print(f"Saving cache for {ID}")
+        if len(cacheBin) < self.config["CacheLength"]:
+            cacheBin[ID] = Data
+        else:
+            # print("Cache overflow")
+            cacheBin.pop()
+            validation.pop()
+            cacheBin[ID] = Data
     def saveConfig(self):
         name = self.config["name"]
         p = f"_{name}.cnfg"
@@ -138,21 +153,38 @@ class collection:
         else:
             print(f"Warning : createNewJson skipped due to exitsing file. file : {fullPath}")
     def loadJson(self, jsonName):
+        cacheID = f"{jsonName}"
+        cached = cacheID in self.jsonCache
+        valid = self.isCachValid(cacheID, self.jsonValid, self.jsonCache)
+        if cached and valid:
+            print(f"Load {cacheID} from cache")
+            # print(self.jsonCache[cacheID])
+            return self.jsonCache[cacheID]
+        print(f"Loading {jsonName}.json from disk. (loadJson)")
         data = json.load(open(f"{self.collectionPath()}/{jsonName}.json", "r"))
         # self.cache.enQueue(jsonName, data)
+        print(f"Saving {cacheID}.json cache.")
+        self.saveCache(cacheID, data, self.jsonValid, self.jsonCache)
+        self.jsonValid[cacheID] = True
         return data
         
     def saveJson(self, jsonName, data):
         f = open(f"{self.collectionPath()}/{jsonName}.json", "w+")
         f.write(json.dumps(data))
         f.close()
+        for cacheID in list(self.whereCache.keys()):
+
+            jName = cacheID.split("-")[-1]
+            if jName == jsonName:
+                # print(f"{jName}.json is not valid anymore.")
+                self.whereCacheValid[cacheID] = False
+                self.jsonValid[cacheID] = False
         # if self.cache.available(jsonName):
         #     self.cache.update(jsonName, data)
     def deleteJson(self, jsonName):
         fullPath = f"{self.collectionPath()}/{jsonName}.json"
         if os.path.isfile(fullPath):
             os.remove(fullPath)
-    @lru_cache
     def getJson(self):
         # for jsonName in self.config["jsonAvailable"].keys():
         #     if self.config["jsonAvailable"][jsonName] < self.config["jsonSize"]:
@@ -190,7 +222,7 @@ class collection:
         if self.config["allJson"][jsonName] >= self.config["jsonSize"]:
             self.config["jsonAvailable"].pop()
         self.saveConfig()
-    def searchThread(self, Json, operator, column, value):
+    def searchThread(self, jsonName, Json, operator, column, value):
         Bin = []
         if operator == "==":
             for docID in Json.keys():
@@ -223,16 +255,26 @@ class collection:
         elif operator == "#":
             for docID in Json.keys():
                     Bin.append(Json[docID])
-        return Bin
+        return Bin, jsonName
     def where(self, column, operator, value):           
         res = []
         buffer = []
+        chachedData = []
         pool = Pool(processes = self.config["threadSize"] if self.config["jsonAvailable"].size() > self.config["threadSize"] else self.config["jsonAvailable"].size() if self.config["jsonAvailable"].size() != 0 else 1)  
         for jsonName in self.config["allJson"].keys():
+            # print(jsonName)
             if self.config["allJson"][jsonName] == 0:
                 continue
+            cacheID = f"{operator}-{column}-{str(value)}-{jsonName}"
+            cached = cacheID in self.whereCache
+            valid = self.isCachValid(cacheID, self.whereCacheValid, self. whereCache)
+            if cached and valid:
+                print(f"Load {cacheID} from cache, Document in cache : {len(self.whereCache[cacheID])}, Search cache :{len(self.whereCache)}")
+                # print(self.whereCache[cacheID])
+                chachedData.append(self.whereCache[cacheID])
+                continue
             Json = self.loadJson(jsonName)
-            buffer.append(pool.apply_async(self.searchThread, [Json, operator, column, value]))
+            buffer.append(pool.apply_async(self.searchThread, [jsonName, Json, operator, column, value]))
             # t = multiprocessing.Process(target=self.searchThread, args=(Json, res, operator, column, value))
             # t.start()
             # threads.append(t)
@@ -249,7 +291,13 @@ class collection:
         for ticket in buffer:
             result = ticket.get(timeout=10)
             if len(result) != 0:
-                res += result
+                res += result[0]
+                cacheID = f"{operator}-{column}-{str(value)}-{result[1]}"
+                if result[0] != []:
+                    self.saveCache(cacheID, result[0], self.whereCacheValid, self.whereCache)
+                self.whereCacheValid[cacheID] = True
+        for cache in chachedData:
+            res += cache
         return res
     def getDoc(self, docID):
         jsonName = docID.split("_")[1]
@@ -258,7 +306,7 @@ class collection:
     def findToDeleteThread(self, Json, DocId, jsonName):
             for Id in Json.keys():
                 if DocId == Id:
-                    print(f"Found : {Id}")
+                    # print(f"Found : {Id}")
                     return [jsonName, Id]
             return []
     def deleteDoc(self, docID):

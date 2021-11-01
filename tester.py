@@ -39,7 +39,7 @@ import json
 import requests as rq
 import random as rd
 
-for i in range(50000):
+for i in range(100):
     data = {
         "name" : f"JackD{i}",
         "age" : rd.randint(18,40),
