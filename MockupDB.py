@@ -3,9 +3,8 @@ import os
 import uuid
 from os import path
 from multiprocessing import Pool
-from functools import lru_cache
 
-class stack:
+class Stack:
     def __init__(self, list = None):
         if list == None:
             self.items = []
@@ -75,7 +74,7 @@ class stack:
 #     def update(self, key, data):
 #         self.items[key] = data
 
-class collection:
+class Collection:
     def __init__(self, name, repoPath, jsonSize=100, threadSize=10, CacheLength=10000):
         def mkdir(Path, name):
             fullPath = f"{Path}/{name}"
@@ -92,7 +91,7 @@ class collection:
         p = f"_{name}.cnfg"
         if isExits(f"{repoPath}/{name}", p):
             self.config = json.loads(open(f"{repoPath}/{name}/{p}", "r").read())
-            self.config["jsonAvailable"] = stack(self.config["jsonAvailable"])
+            self.config["jsonAvailable"] = Stack(self.config["jsonAvailable"])
         else:
             mkdir(repoPath,name)
             self.config = {
@@ -101,7 +100,7 @@ class collection:
                 "jsonSize" : jsonSize,
                 "threadSize" : threadSize,
                 "CacheLength" : CacheLength,
-                "jsonAvailable" : stack(),
+                "jsonAvailable" : Stack(),
                 "allJson" : {}
                 }
             self.saveConfig()
@@ -133,7 +132,7 @@ class collection:
         self.config["jsonAvailable"] = self.config["jsonAvailable"].items
         f.write(json.dumps(self.config))
         f.close()
-        self.config["jsonAvailable"] = stack(self.config["jsonAvailable"])
+        self.config["jsonAvailable"] = Stack(self.config["jsonAvailable"])
     def doConfig(self, param, val):
         self.config[param] = val
         self.saveConfig()
@@ -172,13 +171,13 @@ class collection:
         f = open(f"{self.collectionPath()}/{jsonName}.json", "w+")
         f.write(json.dumps(data))
         f.close()
-        for cacheID in list(self.whereCache.keys()):
+        # for cacheID in list(self.whereCache.keys()):
 
-            jName = cacheID.split("-")[-1]
-            if jName == jsonName:
-                # print(f"{jName}.json is not valid anymore.")
-                self.whereCacheValid[cacheID] = False
-                self.jsonValid[cacheID] = False
+        #     jName = cacheID.split("-")[-1]
+        #     if jName == jsonName:
+        #         # print(f"{jName}.json is not valid anymore.")
+        #         self.saveCache(cacheID, data, self.jsonValid, self.jsonCache)
+        #         self.jsonValid[cacheID] = False
         # if self.cache.available(jsonName):
         #     self.cache.update(jsonName, data)
     def deleteJson(self, jsonName):
@@ -222,6 +221,7 @@ class collection:
         if self.config["allJson"][jsonName] >= self.config["jsonSize"]:
             self.config["jsonAvailable"].pop()
         self.saveConfig()
+        return ID
     def searchThread(self, jsonName, Json, operator, column, value):
         Bin = []
         if operator == "==":
@@ -265,14 +265,14 @@ class collection:
             # print(jsonName)
             if self.config["allJson"][jsonName] == 0:
                 continue
-            cacheID = f"{operator}-{column}-{str(value)}-{jsonName}"
-            cached = cacheID in self.whereCache
-            valid = self.isCachValid(cacheID, self.whereCacheValid, self. whereCache)
-            if cached and valid:
-                print(f"Load {cacheID} from cache, Document in cache : {len(self.whereCache[cacheID])}, Search cache :{len(self.whereCache)}")
-                # print(self.whereCache[cacheID])
-                chachedData.append(self.whereCache[cacheID])
-                continue
+            # cacheID = f"{operator}-{column}-{str(value)}-{jsonName}"
+            # cached = cacheID in self.whereCache
+            # valid = self.isCachValid(cacheID, self.whereCacheValid, self. whereCache)
+            # if cached and valid:
+            #     print(f"Load {cacheID} from cache, Document in cache : {len(self.whereCache[cacheID])}, Search cache :{len(self.whereCache)}")
+            #     # print(self.whereCache[cacheID])
+            #     chachedData.append(self.whereCache[cacheID])
+            #     continue
             Json = self.loadJson(jsonName)
             buffer.append(pool.apply_async(self.searchThread, [jsonName, Json, operator, column, value]))
             # t = multiprocessing.Process(target=self.searchThread, args=(Json, res, operator, column, value))
@@ -292,17 +292,16 @@ class collection:
             result = ticket.get(timeout=10)
             if len(result) != 0:
                 res += result[0]
-                cacheID = f"{operator}-{column}-{str(value)}-{result[1]}"
-                if result[0] != []:
-                    self.saveCache(cacheID, result[0], self.whereCacheValid, self.whereCache)
-                self.whereCacheValid[cacheID] = True
+                # cacheID = f"{operator}-{column}-{str(value)}-{result[1]}"
+                # if result[0] != []:
+                #     self.saveCache(cacheID, result[0], self.whereCacheValid, self.whereCache)
+                # self.whereCacheValid[cacheID] = True
         for cache in chachedData:
             res += cache
         return res
     def getDoc(self, docID):
         jsonName = docID.split("_")[1]
-        return self.loadJson(jsonName)
-
+        return self.loadJson(jsonName)[docID]
     def findToDeleteThread(self, Json, DocId, jsonName):
             for Id in Json.keys():
                 if DocId == Id:

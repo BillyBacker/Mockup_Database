@@ -1,6 +1,6 @@
 import asyncio
 from fastapi import FastAPI
-from MockupDB import collection
+from MockupDB import Collection
 from pydantic import BaseModel
 
 class Student(BaseModel):
@@ -10,7 +10,7 @@ class Student(BaseModel):
 
 
 app = FastAPI()
-db = collection("apitest", "D:", jsonSize=100, threadSize=60, CacheLength=10000)
+db = Collection("apitest", "D:", jsonSize=100, threadSize=60, CacheLength=10000)
 
 @app.get("/")
 async def root():
@@ -27,6 +27,10 @@ async def cache():
 @app.get("/student")
 async def student():
     return db.where("ID", "#", True)
+
+@app.get("/student/id/{id}")
+async def student(id: str):
+    return db.getDoc(id)
 
 @app.get("/student/len")
 async def student():
