@@ -74,7 +74,7 @@ class Stack:
 #     def update(self, key, data):
 #         self.items[key] = data
 
-class Collection:
+class CollectionService:
     def __init__(self, name, repoPath, jsonSize=100, threadSize=10, CacheLength=10000):
         def mkdir(Path, name):
             fullPath = f"{Path}/{name}"
